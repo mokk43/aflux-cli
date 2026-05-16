@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "aflux-cli"
+version = "0.1.0"
+description = "Real-time Python CLI and HTTP scanner for China A-share abnormal turnover and price momentum."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [
+  { name = "aflux-cli contributors" }
+]
+dependencies = [
+  "akshare",
+  "fastapi",
+  "httpx",
+  "pandas",
+  "pydantic>=2",
+  "rich",
+  "slowapi",
+  "typer[all]",
+  "uvicorn",
+]
+
+[project.scripts]
+aflux = "aflux.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["aflux"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
