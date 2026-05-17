@@ -122,16 +122,11 @@ class MarketDataCache:
         with self.connect() as conn:
             conn.executemany(
                 """
+                -- Closed trading-day rows are immutable by design.
                 INSERT INTO daily_bars
                     (code, date, open, high, low, close, turnover, volume)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(code, date) DO UPDATE SET
-                    open = excluded.open,
-                    high = excluded.high,
-                    low = excluded.low,
-                    close = excluded.close,
-                    turnover = excluded.turnover,
-                    volume = excluded.volume
+                ON CONFLICT(code, date) DO NOTHING
                 """,
                 rows,
             )

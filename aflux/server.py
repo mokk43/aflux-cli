@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import secrets
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
@@ -38,6 +39,7 @@ TOKEN_ALGORITHM = "HS256"
 security = HTTPBearer(auto_error=False)
 SECURITY_DEPENDENCY = Depends(security)
 SCAN_WORKER_START_METHOD = "spawn"
+logger = logging.getLogger(__name__)
 
 
 def create_app(
@@ -152,7 +154,8 @@ def create_app(
         except TimeoutError as exc:
             raise HTTPException(status_code=504, detail="Scan timed out.") from exc
         except Exception as exc:
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
+            logger.exception("Unhandled scan failure")
+            raise HTTPException(status_code=500, detail="Internal server error.") from exc
 
     if limiter and rate_limit > 0:
         scan_endpoint = limiter.limit(f"{rate_limit}/minute")(scan_endpoint)

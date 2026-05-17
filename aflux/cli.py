@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 import typer
+from pydantic import ValidationError
 from rich.console import Console
 from rich.progress import BarColumn, Progress, TaskID, TextColumn, TimeRemainingColumn
 
@@ -195,14 +196,26 @@ def serve(
 
     from aflux.server import create_app
 
-    server_app = create_app(
-        cache_dir=str(cache_dir) if cache_dir else None,
-        source=source,
-        cors_origins=cors_origin,
-        rate_limit=rate_limit,
-        auth_rate_limit=auth_rate_limit,
-        web_dir=str(web_dir) if web_dir else None,
-    )
+    try:
+        server_app = create_app(
+            cache_dir=str(cache_dir) if cache_dir else None,
+            source=source,
+            cors_origins=cors_origin,
+            rate_limit=rate_limit,
+            auth_rate_limit=auth_rate_limit,
+            web_dir=str(web_dir) if web_dir else None,
+        )
+    except ValidationError as exc:
+        details = "; ".join(
+            f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"
+            for error in exc.errors()
+        )
+        stderr_console.print(
+            "[red]Invalid configuration:[/red] "
+            f"{details}. Set required AFLUX_* environment variables."
+        )
+        raise typer.Exit(1) from exc
+
     uvicorn.run(server_app, host=host, port=port)
 
 
