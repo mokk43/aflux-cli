@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import httpx
@@ -10,6 +11,21 @@ from aflux.datasource.akshare_src import AKShareSource
 from aflux.market import infer_board, normalize_code
 
 EASTMONEY_SNAPSHOT_URL = "https://push2.eastmoney.com/api/qt/clist/get"
+EASTMONEY_HEADERS = {
+    "Accept": "application/json, text/plain, */*",
+    "Referer": "https://quote.eastmoney.com/",
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
+}
+TRANSIENT_EXCEPTIONS = (
+    httpx.ConnectError,
+    httpx.ReadTimeout,
+    httpx.RemoteProtocolError,
+    httpx.ProxyError,
+)
 
 
 def _to_float(value: Any) -> float | None:
@@ -45,12 +61,7 @@ class EastMoneySource:
             "fs": "m:0+t:6,m:0+t:80,m:0+t:81+s:2048,m:1+t:2,m:1+t:23",
             "fields": "f12,f14,f2,f6,f18",
         }
-        try:
-            response = httpx.get(EASTMONEY_SNAPSHOT_URL, params=params, timeout=15)
-            response.raise_for_status()
-            payload = response.json()
-        except Exception as exc:  # pragma: no cover - external API failure path
-            raise DataSourceError(f"East Money realtime snapshot failed: {exc}") from exc
+        payload = self._fetch_snapshot_payload(params)
 
         items = payload.get("data", {}).get("diff") or []
         rows: list[dict[str, Any]] = []
@@ -72,6 +83,34 @@ class EastMoneySource:
                 }
             )
         return pd.DataFrame(rows)
+
+    def _fetch_snapshot_payload(self, params: dict[str, str]) -> dict[str, Any]:
+        """Fetch snapshot JSON with retry for transient transport errors."""
+        errors: list[str] = []
+        for trust_env in (True, False):
+            for attempt in range(1, 4):
+                try:
+                    with httpx.Client(
+                        timeout=15,
+                        headers=EASTMONEY_HEADERS,
+                        follow_redirects=True,
+                        trust_env=trust_env,
+                    ) as client:
+                        response = client.get(EASTMONEY_SNAPSHOT_URL, params=params)
+                    response.raise_for_status()
+                    return response.json()
+                except TRANSIENT_EXCEPTIONS as exc:
+                    errors.append(f"attempt={attempt} trust_env={trust_env}: {exc}")
+                    if attempt < 3:
+                        time.sleep(0.3 * attempt)
+                except Exception as exc:  # pragma: no cover - external API failure path
+                    raise DataSourceError(f"East Money realtime snapshot failed: {exc}") from exc
+
+        detail = "; ".join(errors) if errors else "unknown error"
+        raise DataSourceError(
+            "East Money realtime snapshot failed after retries. "
+            f"Details: {detail}. Try `--source akshare` as fallback."
+        )
 
     def fetch_daily_bars(self, code: str, start: str, end: str) -> pd.DataFrame:
         return self._akshare.fetch_daily_bars(code=code, start=start, end=end)

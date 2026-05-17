@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-- Repo: https://github.com/mokk43/aflux-cli.git
+- Repo: [https://github.com/mokk43/aflux-cli.git](https://github.com/mokk43/aflux-cli.git)
 - Real-time CLI and HTTP scanner for China A-share abnormal turnover and price momentum.
 
 ## Project Structure & Module Organization
@@ -21,6 +21,7 @@
 - Config: `pyproject.toml` — single source of truth for deps, metadata, ruff config, entry point.
 
 **Cross-cutting rules:**
+
 - `core.py` is the shared brain; **never** put I/O formatting logic there.
 - `cli.py` and `server.py` are thin entry points — they parse input and render output only.
 - All Pydantic models live in `models.py`. **Never** define ad-hoc dicts for API responses.
@@ -52,8 +53,9 @@
 - If deps are missing, run `pip install -e .` then retry once.
 
 **Test env setup** (when tests are added):
+
 ```bash
-source ~/workspace/buildingai/bin/activate
+source ~/.zshrc
 ```
 
 ## Coding Style & Naming Conventions
@@ -99,3 +101,4 @@ source ~/workspace/buildingai/bin/activate
 - When running scans during market hours (9:30-15:00 Beijing, weekdays), the realtime path is used; off-market hours use the historical path — both go through `core.run_scan()`.
 - Board classification is prefix-based (e.g., `688xxx` = STAR). See `market.py` for the canonical mapping.
 - Progress bars render to stderr only; stdout must remain clean for JSON/CSV output.
+
