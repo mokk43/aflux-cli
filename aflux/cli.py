@@ -18,6 +18,33 @@ app.add_typer(cache_app, name="cache")
 
 stderr_console = Console(stderr=True)
 
+EXPORT_OPTION = typer.Option(
+    None,
+    "--export",
+    "-e",
+    help="Export results to CSV or JSON. Format is inferred from extension.",
+)
+SCAN_CACHE_DIR_OPTION = typer.Option(
+    None,
+    "--cache-dir",
+    help="SQLite cache directory.",
+)
+WARM_CACHE_DIR_OPTION = typer.Option(
+    None,
+    "--cache-dir",
+    help="SQLite cache directory.",
+)
+SERVE_CACHE_DIR_OPTION = typer.Option(
+    None,
+    "--cache-dir",
+    help="SQLite cache directory.",
+)
+WEB_DIR_OPTION = typer.Option(
+    None,
+    "--web-dir",
+    help="Directory containing the built SvelteKit app.",
+)
+
 
 @app.command()
 def scan(
@@ -45,23 +72,14 @@ def scan(
         "-f",
         help="Output format: auto, table, csv, json.",
     ),
-    export: Path | None = typer.Option(
-        None,
-        "--export",
-        "-e",
-        help="Export results to CSV or JSON. Format is inferred from extension.",
-    ),
+    export: Path | None = EXPORT_OPTION,
     source: str = typer.Option(
         "akshare",
         "--source",
         "-s",
         help="Data source: akshare or eastmoney.",
     ),
-    cache_dir: Path | None = typer.Option(
-        None,
-        "--cache-dir",
-        help="SQLite cache directory.",
-    ),
+    cache_dir: Path | None = SCAN_CACHE_DIR_OPTION,
     include_st: bool = typer.Option(
         False,
         "--include-st",
@@ -129,11 +147,7 @@ def cache_warm(
         "-s",
         help="Data source: akshare or eastmoney.",
     ),
-    cache_dir: Path | None = typer.Option(
-        None,
-        "--cache-dir",
-        help="SQLite cache directory.",
-    ),
+    cache_dir: Path | None = WARM_CACHE_DIR_OPTION,
 ) -> None:
     try:
         with _progress(sys.stderr.isatty()) as progress_callback:
@@ -158,11 +172,7 @@ def serve(
         "--cors-origin",
         help="Allowed CORS origins, comma-separated.",
     ),
-    cache_dir: Path | None = typer.Option(
-        None,
-        "--cache-dir",
-        help="SQLite cache directory.",
-    ),
+    cache_dir: Path | None = SERVE_CACHE_DIR_OPTION,
     source: str = typer.Option(
         "akshare",
         "--source",
@@ -174,6 +184,12 @@ def serve(
         "--rate-limit",
         help="Max requests per minute per IP. Use 0 to disable.",
     ),
+    auth_rate_limit: int = typer.Option(
+        5,
+        "--auth-rate-limit",
+        help="Max login attempts per minute per IP. Use 0 to disable.",
+    ),
+    web_dir: Path | None = WEB_DIR_OPTION,
 ) -> None:
     import uvicorn
 
@@ -184,6 +200,8 @@ def serve(
         source=source,
         cors_origins=cors_origin,
         rate_limit=rate_limit,
+        auth_rate_limit=auth_rate_limit,
+        web_dir=str(web_dir) if web_dir else None,
     )
     uvicorn.run(server_app, host=host, port=port)
 

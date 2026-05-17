@@ -1,0 +1,21 @@
+{
+  "name": "aflux-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-kit sync && tsc --noEmit"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-static": "3.0.8",
+    "@sveltejs/kit": "2.16.1",
+    "@sveltejs/vite-plugin-svelte": "3.1.2",
+    "@tailwindcss/vite": "4.1.18",
+    "svelte": "4.2.20",
+    "tailwindcss": "4.1.18",
+    "typescript": "latest",
+    "vite": "5.4.21"
+  }
+}

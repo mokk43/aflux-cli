@@ -1,0 +1,16 @@
+{
+  "name": "aflux",
+  "short_name": "aflux",
+  "description": "A-share abnormal turnover and momentum scanner",
+  "start_url": "/scan",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

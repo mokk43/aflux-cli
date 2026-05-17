@@ -32,6 +32,30 @@ class OutputFormat(StrEnum):
     JSON = "json"
 
 
+class HealthResponse(BaseModel):
+    status: str
+    version: str
+
+
+class AuthRequest(BaseModel):
+    code: str = Field(min_length=1)
+
+
+class AuthResponse(BaseModel):
+    token: str
+    token_type: str = "bearer"
+    expires_in: int
+
+
+class BoardInfo(BaseModel):
+    id: Board
+    label: str
+
+
+class BoardsResponse(BaseModel):
+    boards: list[BoardInfo]
+
+
 class StockSnapshot(BaseModel):
     model_config = ConfigDict(use_enum_values=True)
 
