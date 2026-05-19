@@ -15,9 +15,14 @@
   - `market.py` — Market hours, trading calendar, board classification.
   - `cache.py` — SQLite cache layer (`~/.aflux/cache/market_data.db`).
   - `output.py` — Rich table, CSV, JSON formatting.
+  - `pull_daily_stock_quotes.py` — Tushare-based extractor to backfill/refresh local `daily_stock_quotes` in SQLite when online datasource calls are unavailable.
+  - `refresh_stock_basic.py` — Tushare-based extractor to refresh `stock_basic` reference table in SQLite.
+  - `vol_boom.py` — Local SQLite screening tool for volume-surge candidates (uses daily quotes + stock basic).
+  - `hot_sectors.py` — Sector hotspot analysis script (Tushare multi-endpoint aggregation).
   - `datasource/` — Data source abstraction (Protocol-based).
     - `akshare_src.py` — AKShare implementation (primary).
     - `eastmoney_src.py` — East Money HTTP API (fallback).
+  - `db_schema/` — SQLite schema SQL files for local extraction database bootstrap (`daily_stock_quotes.sql`, `stock_info.sql`).
 - Frontend: `web/` — SvelteKit SPA (`adapter-static`) + Tailwind CSS v4.
   - Built output (`web/build/`) is served by FastAPI at `/` when present.
   - Dev: Vite dev server on :5173 proxies `/api` to FastAPI on :8000.
@@ -66,6 +71,12 @@
 - Run server: `aflux serve --port 8000`
 - Run server with custom web dir: `aflux serve --web-dir web/build`
 - Cache warm: `aflux cache warm -b star,chinext`
+- Initialize local extraction DB schema:
+  - `sqlite3 shares_stat.db < db_schema/stock_info.sql`
+  - `sqlite3 shares_stat.db < db_schema/daily_stock_quotes.sql`
+- Refresh stock basic data (fallback tooling): `python aflux/refresh_stock_basic.py --db shares_stat.db`
+- Pull daily quotes (fallback tooling): `python aflux/pull_daily_stock_quotes.py --db shares_stat.db`
+- Run local volume-surge screening: `python aflux/vol_boom.py --db shares_stat.db`
 - Build frontend: `make build-web` (or `cd web && npm ci && npm run build`)
 - Dev (API + frontend): `make dev`
 - Clean frontend: `make clean`
@@ -117,11 +128,13 @@ source ~/.zshrc
 - Verify answers in code; do not guess API field names or AKShare function signatures.
 - **Never** edit `__pycache__/`, `node_modules/`, `.svelte-kit/`, or vendored dependencies.
 - AKShare API can be flaky; always handle `requests`/`httpx` exceptions gracefully.
+- If AKShare/East Money endpoints are unstable or unavailable, prefer the SQLite fallback path (`shares_stat.db`) populated by `pull_daily_stock_quotes.py` and `refresh_stock_basic.py`.
 - SQLite cache rows for closed trading days are immutable — never update them.
+- `shares_stat.db` is a local working database and must stay git-ignored.
 - The `DataSource` protocol in `datasource/__init__.py` defines the contract; new data sources must implement all three methods.
+- Extraction scripts in `aflux/*.py` are operational tools; do not move their business logic into `cli.py` / `server.py`.
 - When running scans during market hours (9:30-15:00 Beijing, weekdays), the realtime path is used; off-market hours use the historical path — both go through `core.run_scan()`.
 - Board classification is prefix-based (e.g., `688xxx` = STAR). See `market.py` for the canonical mapping.
 - Progress bars render to stderr only; stdout must remain clean for JSON/CSV output.
 - Server scan endpoint runs `run_scan()` in a spawned worker process with configurable timeout; do not call `run_scan()` directly in the request handler.
 - SPA mount uses `SpaStaticFiles` subclass that falls back to `index.html` for non-API, non-health paths.
-

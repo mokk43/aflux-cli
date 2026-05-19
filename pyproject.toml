@@ -33,6 +33,15 @@ aflux = "aflux.cli:app"
 [tool.hatch.build.targets.wheel]
 packages = ["aflux"]
 
+[tool.hatch.build.targets.sdist]
+include = [
+  "/aflux",
+  "/db_schema",
+  "/README.md",
+  "/LICENSE",
+  "/pyproject.toml",
+]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
