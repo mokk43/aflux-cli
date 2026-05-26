@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import date, datetime
-from typing import Any
 
 import pandas as pd
 
@@ -16,7 +15,7 @@ from aflux.market import (
     parse_boards,
     should_use_realtime_path,
 )
-from aflux.models import Board, DailyBar, MarketPhase, ScanResponse, ScanResult, SourceName, StockSnapshot
+from aflux.models import Board, MarketPhase, ScanResponse, ScanResult, SourceName, StockSnapshot
 from aflux.scanner import (
     apply_board_filter,
     exclude_edge_cases,
@@ -123,7 +122,7 @@ def _run_scan_pipeline(
     candidates = prefilter_by_price_change(edge_filtered, price_change)
     codes = candidates["code"].drop_duplicates().tolist()
 
-    prev_bars = _get_daily_bars_for_codes(
+    prev_frame = _get_daily_bars_for_codes(
         datasource=datasource,
         cache=cache,
         codes=codes,
@@ -131,7 +130,6 @@ def _run_scan_pipeline(
         no_cache=no_cache,
         progress_callback=progress_callback,
     )
-    prev_frame = _daily_bars_to_frame(prev_bars)
     return scan(
         current=candidates,
         prev_daily=prev_frame,
@@ -180,14 +178,19 @@ def _get_daily_bars_for_codes(
     trading_date: date,
     no_cache: bool,
     progress_callback: ProgressCallback | None,
-) -> dict[str, DailyBar]:
+) -> pd.DataFrame:
     unique_codes = list(dict.fromkeys(codes))
     if not unique_codes:
-        return {}
+        return pd.DataFrame(columns=["code", "date", "open", "high", "low", "close", "turnover", "volume"])
 
-    cached = {} if no_cache else cache.get_daily_bars(unique_codes, trading_date)
-    missing = [code for code in unique_codes if code not in cached]
-    fetched: dict[str, DailyBar] = {}
+    cached = (
+        pd.DataFrame(columns=["code", "date", "open", "high", "low", "close", "turnover", "volume"])
+        if no_cache
+        else cache.get_daily_bars_frame(unique_codes, trading_date)
+    )
+    cached_codes = set(cached["code"].astype(str).tolist()) if not cached.empty else set()
+    missing = [code for code in unique_codes if code not in cached_codes]
+    fetched_frames: list[pd.DataFrame] = []
 
     total = len(missing)
     for index, code in enumerate(missing, start=1):
@@ -198,39 +201,23 @@ def _get_daily_bars_for_codes(
             start=trading_date.isoformat(),
             end=trading_date.isoformat(),
         )
-        bars = _frame_to_daily_bars(frame)
-        if bars:
-            fetched[code] = bars[0]
-            cache.upsert_daily_bars([bars[0]])
+        normalized = normalize_daily_frame(frame)
+        if not normalized.empty:
+            fetched_frames.append(normalized)
+            cache.upsert_daily_bars_frame(normalized)
         if progress_callback:
             progress_callback(index, total, code)
 
-    return {**cached, **fetched}
-
-
-def _frame_to_daily_bars(frame: pd.DataFrame) -> list[DailyBar]:
-    normalized = normalize_daily_frame(frame)
-    bars: list[DailyBar] = []
-    for _, row in normalized.iterrows():
-        bars.append(
-            DailyBar(
-                code=str(row["code"]),
-                date=date.fromisoformat(str(row["date"])),
-                open=_optional_float(row.get("open")),
-                high=_optional_float(row.get("high")),
-                low=_optional_float(row.get("low")),
-                close=float(row["close"]),
-                turnover=float(row["turnover"]),
-                volume=_optional_int(row.get("volume")),
-            )
-        )
-    return bars
-
-
-def _daily_bars_to_frame(bars: dict[str, DailyBar]) -> pd.DataFrame:
-    if not bars:
+    frames: list[pd.DataFrame] = []
+    if not cached.empty:
+        frames.append(cached)
+    frames.extend(fetched_frames)
+    if not frames:
         return pd.DataFrame(columns=["code", "date", "open", "high", "low", "close", "turnover", "volume"])
-    return pd.DataFrame([bar.model_dump(mode="json") for bar in bars.values()])
+    merged = pd.concat(frames, ignore_index=True)
+    if merged.empty:
+        return merged
+    return merged.drop_duplicates(subset=["code"], keep="first").copy()
 
 
 def _snapshot_models(snapshot: pd.DataFrame) -> list[StockSnapshot]:
@@ -255,15 +242,3 @@ def _resolve_warm_date(value: str | date | None, trading_calendar: list[str]) ->
     if value:
         return date.fromisoformat(value)
     return latest_completed_trading_dates(trading_calendar, count=1)[0]
-
-
-def _optional_float(value: Any) -> float | None:
-    if pd.isna(value):
-        return None
-    return float(value)
-
-
-def _optional_int(value: Any) -> int | None:
-    if pd.isna(value):
-        return None
-    return int(value)

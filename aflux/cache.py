@@ -6,6 +6,8 @@ from contextlib import contextmanager
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
+import pandas as pd
+
 from aflux.models import DailyBar, StockSnapshot
 
 DEFAULT_CACHE_DIR = Path.home() / ".aflux" / "cache"
@@ -103,6 +105,29 @@ class MarketDataCache:
             ).fetchall()
         return {row["code"]: self._row_to_daily_bar(row) for row in rows}
 
+    def get_daily_bars_frame(self, codes: Iterable[str], trading_date: date) -> pd.DataFrame:
+        code_list = list(dict.fromkeys(codes))
+        if not code_list:
+            return pd.DataFrame(
+                columns=["code", "date", "open", "high", "low", "close", "turnover", "volume"]
+            )
+        placeholders = ",".join("?" for _ in code_list)
+        params = [*code_list, trading_date.isoformat()]
+        with self.connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT code, date, open, high, low, close, turnover, volume
+                FROM daily_bars
+                WHERE code IN ({placeholders}) AND date = ?
+                """,
+                params,
+            ).fetchall()
+        if not rows:
+            return pd.DataFrame(
+                columns=["code", "date", "open", "high", "low", "close", "turnover", "volume"]
+            )
+        return pd.DataFrame([dict(row) for row in rows])
+
     def upsert_daily_bars(self, bars: Iterable[DailyBar]) -> None:
         rows = [
             (
@@ -119,6 +144,34 @@ class MarketDataCache:
         ]
         if not rows:
             return
+        with self.connect() as conn:
+            conn.executemany(
+                """
+                -- Closed trading-day rows are immutable by design.
+                INSERT INTO daily_bars
+                    (code, date, open, high, low, close, turnover, volume)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(code, date) DO NOTHING
+                """,
+                rows,
+            )
+
+    def upsert_daily_bars_frame(self, frame: pd.DataFrame) -> None:
+        if frame is None or frame.empty:
+            return
+        rows = [
+            (
+                str(row["code"]),
+                pd.to_datetime(row["date"]).date().isoformat(),
+                row.get("open"),
+                row.get("high"),
+                row.get("low"),
+                row["close"],
+                row["turnover"],
+                row.get("volume"),
+            )
+            for _, row in frame.iterrows()
+        ]
         with self.connect() as conn:
             conn.executemany(
                 """
