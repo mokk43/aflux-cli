@@ -84,9 +84,12 @@ def scan(
     price_change_threshold: float,
     include_st: bool = False,
 ) -> list[ScanResult]:
-    """Apply the final price and volume filters and return structured results."""
-    current_frame = exclude_edge_cases(normalize_snapshot_frame(current), include_st=include_st)
-    prev_frame = normalize_daily_frame(prev_daily)
+    """Apply final scan thresholds on preprocessed frames and return structured results."""
+    # `current` and `prev_daily` are expected to be normalized and prefiltered by core.py.
+    # Keep `include_st` in the signature for backward compatibility with existing callers.
+    _ = include_st
+    current_frame = current
+    prev_frame = prev_daily
     if current_frame.empty or prev_frame.empty:
         return []
 
