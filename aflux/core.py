@@ -16,7 +16,7 @@ from aflux.market import (
     parse_boards,
     should_use_realtime_path,
 )
-from aflux.models import Board, DailyBar, MarketPhase, ScanResponse, SourceName, StockSnapshot
+from aflux.models import Board, DailyBar, MarketPhase, ScanResponse, ScanResult, SourceName, StockSnapshot
 from aflux.scanner import (
     apply_board_filter,
     exclude_edge_cases,
@@ -47,31 +47,23 @@ def run_scan(
     scan_time = now_cn()
 
     if should_use_realtime_path(phase):
-        results = _run_realtime_scan(
-            datasource=datasource,
-            cache=cache,
-            trading_calendar=trading_calendar,
-            selected_boards=selected_boards,
-            volume_ratio=volume_ratio,
-            price_change=price_change,
-            no_cache=no_cache,
-            include_st=include_st,
-            progress_callback=progress_callback,
-            source=source,
-        )
+        previous_day_offset = 1
     else:
-        results = _run_offmarket_scan(
-            datasource=datasource,
-            cache=cache,
-            trading_calendar=trading_calendar,
-            selected_boards=selected_boards,
-            volume_ratio=volume_ratio,
-            price_change=price_change,
-            no_cache=no_cache,
-            include_st=include_st,
-            progress_callback=progress_callback,
-            source=source,
-        )
+        previous_day_offset = 2
+
+    results = _run_scan_pipeline(
+        datasource=datasource,
+        cache=cache,
+        trading_calendar=trading_calendar,
+        selected_boards=selected_boards,
+        volume_ratio=volume_ratio,
+        price_change=price_change,
+        no_cache=no_cache,
+        include_st=include_st,
+        progress_callback=progress_callback,
+        source=source,
+        previous_day_offset=previous_day_offset,
+    )
 
     return ScanResponse(
         scan_time=scan_time,
@@ -109,7 +101,7 @@ def warm_cache(
     return len(bars)
 
 
-def _run_realtime_scan(
+def _run_scan_pipeline(
     datasource: DataSource,
     cache: MarketDataCache,
     trading_calendar: list[str],
@@ -120,45 +112,10 @@ def _run_realtime_scan(
     include_st: bool,
     progress_callback: ProgressCallback | None,
     source: str,
-) -> list:
-    snapshot = _fetch_realtime_snapshot(datasource, source=source)
-    _cache_realtime_snapshot(cache, snapshot)
-    board_filtered = apply_board_filter(snapshot, selected_boards)
-    edge_filtered = exclude_edge_cases(board_filtered, include_st=include_st)
-    candidates = prefilter_by_price_change(edge_filtered, price_change)
-    codes = candidates["code"].drop_duplicates().tolist()
-    [prev_date] = latest_completed_trading_dates(trading_calendar, count=1)
-    prev_bars = _get_daily_bars_for_codes(
-        datasource=datasource,
-        cache=cache,
-        codes=codes,
-        trading_date=prev_date,
-        no_cache=no_cache,
-        progress_callback=progress_callback,
-    )
-    prev_frame = _daily_bars_to_frame(prev_bars)
-    return scan(
-        current=candidates,
-        prev_daily=prev_frame,
-        volume_ratio_threshold=volume_ratio,
-        price_change_threshold=price_change,
-        include_st=include_st,
-    )
-
-
-def _run_offmarket_scan(
-    datasource: DataSource,
-    cache: MarketDataCache,
-    trading_calendar: list[str],
-    selected_boards: list[Board],
-    volume_ratio: float,
-    price_change: float,
-    no_cache: bool,
-    include_st: bool,
-    progress_callback: ProgressCallback | None,
-    source: str,
-) -> list:
-    t1_date, t2_date = latest_completed_trading_dates(trading_calendar, count=2)
+    previous_day_offset: int,
+) -> list[ScanResult]:
+    trading_dates = latest_completed_trading_dates(trading_calendar, count=previous_day_offset)
+    previous_date = trading_dates[-1]
     snapshot = _fetch_realtime_snapshot(datasource, source=source)
     _cache_realtime_snapshot(cache, snapshot)
     board_filtered = apply_board_filter(snapshot, selected_boards)
@@ -170,14 +127,11 @@ def _run_offmarket_scan(
         datasource=datasource,
         cache=cache,
         codes=codes,
-        trading_date=t2_date,
+        trading_date=previous_date,
         no_cache=no_cache,
         progress_callback=progress_callback,
     )
     prev_frame = _daily_bars_to_frame(prev_bars)
-    # The off-market snapshot is treated as T-1 final data. Keep the date for diagnostics
-    # via the source cache, but computations only need close/turnover/prev close columns.
-    _ = t1_date
     return scan(
         current=candidates,
         prev_daily=prev_frame,
