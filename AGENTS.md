@@ -138,3 +138,7 @@ source ~/.zshrc
 - Progress bars render to stderr only; stdout must remain clean for JSON/CSV output.
 - Server scan endpoint runs `run_scan()` in a spawned worker process with configurable timeout; do not call `run_scan()` directly in the request handler.
 - SPA mount uses `SpaStaticFiles` subclass that falls back to `index.html` for non-API, non-health paths.
+
+## Filetree Index
+
+- `./FILETREE.md` — Per-file purpose index. Read before `ls` / `grep` when overviewing the repo or locating an implementation.
